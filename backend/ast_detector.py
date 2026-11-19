@@ -988,6 +988,47 @@ def detect_js_ast_bugs(filepath: str, content: str) -> List[Dict[str, Any]]:
     """
     findings: List[Dict[str, Any]] = []
 
+    # 1. Structural and Safety Heuristic Checks (Runs universally)
+    for idx, line in enumerate(content.splitlines()):
+        lineno = idx + 1
+        trimmed = line.strip()
+
+        # Check Unhandled JSON.parse on LocalStorage
+        if "JSON.parse(" in line and "localStorage" in line and "try" not in line and not trimmed.startswith("//"):
+            findings.append({
+                "id": f"bug-jsjson-{uuid.uuid4().hex[:8]}",
+                "title": f"Unhandled JSON.parse from LocalStorage (Line {lineno})",
+                "category": "Logical Errors",
+                "severity": "ERROR",
+                "confidence": 95,
+                "line_start": lineno,
+                "line_end": lineno,
+                "col_offset": line.find("JSON.parse"),
+                "end_col_offset": line.find("JSON.parse") + 10,
+                "description": "Calling JSON.parse directly on browser LocalStorage without try...catch throws an uncaught SyntaxError if stored data is corrupted, halting script execution.",
+                "root_cause": f"At line {lineno}, if localStorage contains malformed JSON, JSON.parse() crashes the entire application.",
+                "trigger_input_or_state": "Corrupted or unexpected localStorage state.",
+                "repair_summary": "Wrap JSON.parse in a try...catch block with safe fallback."
+            })
+
+        # Check Date.now() as Unique Identifier
+        if "Date.now()" in line and ("id:" in line or "id =" in line) and not trimmed.startswith("//"):
+            findings.append({
+                "id": f"bug-jsid-{uuid.uuid4().hex[:8]}",
+                "title": f"Timestamp Collision Risk in Unique ID Generation (Line {lineno})",
+                "category": "Logical Errors",
+                "severity": "WARNING",
+                "confidence": 92,
+                "line_start": lineno,
+                "line_end": lineno,
+                "col_offset": line.find("Date.now()"),
+                "end_col_offset": line.find("Date.now()") + 10,
+                "description": "Using Date.now() for unique identifiers can cause duplicate keys if multiple items are created in the same millisecond.",
+                "root_cause": f"At line {lineno}, Date.now() has millisecond resolution, risking duplicate ID generation during rapid clicks or automated inputs.",
+                "trigger_input_or_state": "Multiple rapid additions in the same millisecond.",
+                "repair_summary": "Use crypto.randomUUID() or incremental counter for collision-free IDs."
+            })
+
     if not HAS_ESPRIMA:
         return findings
 
@@ -1112,6 +1153,218 @@ def detect_js_ast_bugs(filepath: str, content: str) -> List[Dict[str, Any]]:
                 walk_js(val, node)
 
     walk_js(tree)
+
+    # 3. Supplemental High-Impact JavaScript Defect Detection
+    for idx, line in enumerate(content.splitlines()):
+        lineno = idx + 1
+        trimmed = line.strip()
+
+        # Check Unhandled JSON.parse on LocalStorage
+        if "JSON.parse(" in line and "localStorage" in line and "try" not in line and not line.startswith("//"):
+            findings.append({
+                "id": f"bug-jsjson-{uuid.uuid4().hex[:8]}",
+                "title": f"Unhandled JSON.parse from LocalStorage (Line {lineno})",
+                "category": "Logical Errors",
+                "severity": "ERROR",
+                "confidence": 95,
+                "line_start": lineno,
+                "line_end": lineno,
+                "col_offset": line.find("JSON.parse"),
+                "end_col_offset": line.find("JSON.parse") + 10,
+                "description": "Calling JSON.parse directly on browser LocalStorage without try...catch throws an uncaught SyntaxError if stored data is corrupted, halting script execution.",
+                "root_cause": f"At line {lineno}, if localStorage contains malformed JSON, JSON.parse() crashes the entire application.",
+                "trigger_input_or_state": "Corrupted or unexpected localStorage state.",
+                "repair_summary": "Wrap JSON.parse in a try...catch block with safe fallback."
+            })
+
+        # Check Date.now() as Unique Identifier
+        if "Date.now()" in line and ("id:" in line or "id =" in line) and not line.startswith("//"):
+            findings.append({
+                "id": f"bug-jsid-{uuid.uuid4().hex[:8]}",
+                "title": f"Timestamp Collision Risk in Unique ID Generation (Line {lineno})",
+                "category": "Logical Errors",
+                "severity": "WARNING",
+                "confidence": 92,
+                "line_start": lineno,
+                "line_end": lineno,
+                "col_offset": line.find("Date.now()"),
+                "end_col_offset": line.find("Date.now()") + 10,
+                "description": "Using Date.now() for unique identifiers can cause duplicate keys if multiple items are created in the same millisecond.",
+                "root_cause": f"At line {lineno}, Date.now() has millisecond resolution, risking duplicate ID generation during rapid clicks or automated inputs.",
+                "trigger_input_or_state": "Multiple rapid additions in the same millisecond.",
+                "repair_summary": "Use crypto.randomUUID() or incremental counter for collision-free IDs."
+            })
+
+    return findings
+
+
+def detect_css_bugs(filepath: str, content: str) -> List[Dict[str, Any]]:
+    """CSS defect and cross-browser compatibility analyzer."""
+    findings: List[Dict[str, Any]] = []
+    import re
+    for idx, line in enumerate(content.splitlines()):
+        lineno = idx + 1
+        # Check 8-digit hex #RRGGBBAA with alpha
+        m = re.search(r'#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})\b', line)
+        if m:
+            r = int(m.group(1), 16)
+            g = int(m.group(2), 16)
+            b = int(m.group(3), 16)
+            a = round(int(m.group(4), 16) / 255.0, 2)
+            findings.append({
+                "id": f"bug-csshex-{uuid.uuid4().hex[:8]}",
+                "title": f"CSS 8-Digit Hex Color Compatibility (Line {lineno})",
+                "category": "Code Quality Problems",
+                "severity": "WARNING",
+                "confidence": 90,
+                "line_start": lineno,
+                "line_end": lineno,
+                "col_offset": m.start(),
+                "end_col_offset": m.end(),
+                "description": f"8-digit hexadecimal color code '{m.group(0)}' with alpha channel may not render properly in legacy browsers or older WebViews.",
+                "root_cause": f"At line {lineno}, CSS 8-digit hex notation requires CSS Color Module Level 4. Providing an rgba() equivalent ensures universal cross-browser compatibility.",
+                "trigger_input_or_state": "Rendering in legacy browsers or non-CSS4 compliant renderers.",
+                "repair_summary": f"Replace '{m.group(0)}' with standard 'rgba({r}, {g}, {b}, {a})'."
+            })
+    return findings
+
+
+def inspect_html_file(filepath: str, content: str) -> List[Dict[str, Any]]:
+    """
+    HTML markup, accessibility, and structure analyzer.
+    Detects missing doctype, missing alt attributes, unclosed tags, broken forms, and deprecated elements.
+    """
+    findings: List[Dict[str, Any]] = []
+    lines = content.splitlines()
+
+    # 1. Missing DOCTYPE
+    first_non_empty = next((l.strip() for l in lines if l.strip()), "")
+    if not first_non_empty.lower().startswith("<!doctype html"):
+        findings.append({
+            "title": "HTML Standard: Missing '<!DOCTYPE html>' Declaration (Line 1)",
+            "line_start": 1,
+            "line_end": 1,
+            "category": "Syntax Errors",
+            "severity": "WARNING",
+            "confidence": 99,
+            "description": "HTML document does not declare modern HTML5 DOCTYPE. Browsers will render in Quirks Mode, causing layout inconsistencies.",
+            "root_cause": "The document header lacks '<!DOCTYPE html>'. Omitting the DOCTYPE triggers legacy rendering modes.",
+            "trigger_input_or_state": "Any modern web browser rendering this document.",
+            "repair_summary": "Prepend standard '<!DOCTYPE html>' at line 1.",
+            "type": "missing_doctype"
+        })
+
+    # 2. Line-by-line defects
+    for idx, line in enumerate(lines):
+        lineno = idx + 1
+        trimmed = line.strip()
+
+        # Check <img> missing alt attribute
+        if "<img " in trimmed and "alt=" not in trimmed:
+            findings.append({
+                "title": f"Accessibility (WCAG 2.1): Missing 'alt' on <img> Tag (Line {lineno})",
+                "line_start": lineno,
+                "line_end": lineno,
+                "category": "Code Quality Problems",
+                "severity": "WARNING",
+                "confidence": 95,
+                "description": f"Image tag on line {lineno} lacks an 'alt' attribute, violating WCAG 2.1 accessibility standards.",
+                "root_cause": f"At line {lineno}, <img> element has no alternative text description. Screen readers cannot describe the graphic.",
+                "trigger_input_or_state": "Screen reader or accessibility audit tool scanning the document.",
+                "repair_summary": f"Add descriptive `alt=\"Image graphic\"` attribute to <img> tag on line {lineno}.",
+                "type": "missing_alt",
+                "line_idx": idx
+            })
+
+        # Check <form> missing action or method
+        if "<form" in trimmed and (">" in trimmed) and ("method=" not in trimmed or "action=" not in trimmed):
+            findings.append({
+                "title": f"HTML Form Specification: Missing 'action' or 'method' (Line {lineno})",
+                "line_start": lineno,
+                "line_end": lineno,
+                "category": "Structural Errors",
+                "severity": "WARNING",
+                "confidence": 90,
+                "description": f"Form tag on line {lineno} does not specify explicit HTTP submission method or action destination.",
+                "root_cause": f"At line {lineno}, <form> relies on browser defaults (implicit GET), which may leak sensitive form data into URL parameters.",
+                "trigger_input_or_state": "User submits form without explicit destination or POST method.",
+                "repair_summary": f"Add `method=\"POST\" action=\"#\"` to <form> element on line {lineno}.",
+                "type": "form_attributes",
+                "line_idx": idx
+            })
+
+        # Check <input> missing associated label (WCAG 2.1)
+        if "<input " in trimmed and "type=\"hidden\"" not in trimmed and "aria-label" not in trimmed:
+            has_label = False
+            for offset in (-2, -1, 1, 2):
+                if 0 <= idx + offset < len(lines):
+                    if "<label" in lines[idx + offset]:
+                        has_label = True
+                        break
+            if not has_label:
+                findings.append({
+                    "title": f"Accessibility (WCAG 2.1): Missing Form Label for <input> (Line {lineno})",
+                    "line_start": lineno,
+                    "line_end": lineno,
+                    "category": "Structural Errors",
+                    "severity": "WARNING",
+                    "confidence": 92,
+                    "description": f"Input field on line {lineno} lacks an associated <label> or aria-label attribute, violating WCAG accessibility criteria.",
+                    "root_cause": f"At line {lineno}, <input> has no corresponding <label for=\"...\"> element.",
+                    "trigger_input_or_state": "Screen reader or assistive technology user accessing form.",
+                    "repair_summary": f"Add an associated `<label for=\"...\">` element or `aria-label` attribute on line {lineno}.",
+                    "type": "missing_label",
+                    "line_idx": idx
+                })
+
+        # Check deprecated tags: <center>, <font>, <marquee>, <blink>
+        for dep in ("<center>", "<font", "<marquee>", "<blink>"):
+            if dep in trimmed.lower():
+                tag_name = dep.replace("<", "").replace(">", "").strip()
+                findings.append({
+                    "title": f"Deprecated HTML Element: '<{tag_name}>' (Line {lineno})",
+                    "line_start": lineno,
+                    "line_end": lineno,
+                    "category": "Code Quality Problems",
+                    "severity": "WARNING",
+                    "confidence": 95,
+                    "description": f"The '<{tag_name}>' element on line {lineno} was deprecated in modern HTML specifications.",
+                    "root_cause": f"At line {lineno}, obsolete presentation tag '<{tag_name}>' violates modern web separation of concerns.",
+                    "trigger_input_or_state": "Modern browser rendering engine.",
+                    "repair_summary": f"Replace '<{tag_name}>' with modern semantic container or CSS styling.",
+                    "type": "deprecated_tag",
+                    "line_idx": idx,
+                    "tag_name": tag_name
+                })
+
+    # 3. Check unclosed tags (e.g. <p> without </p> before closing </div>)
+    for idx, line in enumerate(lines):
+        lineno = idx + 1
+        trimmed = line.strip()
+        if trimmed.startswith("<p>") and "</p>" not in trimmed:
+            closed = False
+            for forward in lines[idx+1:idx+6]:
+                if "</p>" in forward:
+                    closed = True
+                    break
+                if "</div" in forward or "</body" in forward or "<p>" in forward:
+                    break
+            if not closed:
+                findings.append({
+                    "title": f"HTML Syntax: Unclosed '<p>' Tag (Line {lineno})",
+                    "line_start": lineno,
+                    "line_end": lineno,
+                    "category": "Syntax Errors",
+                    "severity": "ERROR",
+                    "confidence": 92,
+                    "description": f"Paragraph tag '<p>' on line {lineno} is unclosed before enclosing container terminates.",
+                    "root_cause": f"At line {lineno}, paragraph element lacks terminating '</p>', causing unexpected DOM hierarchy inheritance.",
+                    "trigger_input_or_state": "DOM parser constructing browser render tree.",
+                    "repair_summary": f"Append closing '</p>' tag to line {lineno}.",
+                    "type": "unclosed_p",
+                    "line_idx": idx
+                })
+
     return findings
 
 
@@ -1127,6 +1380,7 @@ def detect_ast_bugs(filepath: str, content: str) -> List[Dict[str, Any]]:
     - Java: `javalang` AST parser
     - JavaScript/TypeScript: `esprima` tolerant AST parser
     - HTML: structural and markup heuristic checker
+    - CSS: stylesheet and compatibility checker
     """
     ext = os.path.splitext(filepath)[1].lower()
 
@@ -1137,8 +1391,9 @@ def detect_ast_bugs(filepath: str, content: str) -> List[Dict[str, Any]]:
     elif ext in (".js", ".jsx", ".ts", ".tsx", ".mjs"):
         findings = detect_js_ast_bugs(filepath, content)
     elif ext in (".html", ".htm"):
-        from llm_engine import inspect_html_file
         findings = inspect_html_file(filepath, content)
+    elif ext in (".css",):
+        findings = detect_css_bugs(filepath, content)
     else:
         findings = []
 

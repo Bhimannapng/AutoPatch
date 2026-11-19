@@ -135,7 +135,7 @@ def run_analysis(
             import concurrent.futures
             executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
             future = executor.submit(run_llm_analysis, files_dict, api_key)
-            bugs, model_used = future.result(timeout=10.0)
+            bugs, model_used = future.result(timeout=3.5)
             executor.shutdown(wait=False, cancel_futures=True)
             if bugs:
                 return bugs, model_used
@@ -151,7 +151,7 @@ def run_analysis(
             import concurrent.futures
             executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
             future = executor.submit(run_combined_analysis, files_dict, api_key)
-            res = future.result(timeout=10.0)
+            res = future.result(timeout=3.5)
             executor.shutdown(wait=False, cancel_futures=True)
             return res
         except Exception:
