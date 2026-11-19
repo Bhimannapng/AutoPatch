@@ -206,24 +206,55 @@ class AppState:
                     file_to_bugs.setdefault(bug.file_path, []).append(bug)
 
                 for file_path, bugs in file_to_bugs.items():
+                    # Resolve exact target file in temp_export_dir
+                    target_file = os.path.join(temp_export_dir, file_path)
+                    if not os.path.exists(target_file):
+                        candidates = []
+                        for root, _, fs in os.walk(temp_export_dir):
+                            for f in fs:
+                                full_cand = os.path.join(root, f)
+                                rel_cand = os.path.relpath(full_cand, temp_export_dir)
+                                if rel_cand.endswith(file_path) or f == os.path.basename(file_path):
+                                    candidates.append(full_cand)
+                        if candidates:
+                            candidates.sort(key=lambda c: len(c))
+                            target_file = candidates[0]
+
+                    working_code = ""
+                    if os.path.exists(target_file):
+                        with open(target_file, "r", encoding="utf-8") as f:
+                            working_code = f.read()
+
                     corrected_code: Optional[str] = None
-                    # First priority: composed_code which combines all fixes for this file
+
+                    # Priority 1: Composed code that differs from original
                     for b in bugs:
-                        if getattr(b, "composed_code", None) and b.composed_code and b.composed_code.strip():
+                        if getattr(b, "composed_code", None) and b.composed_code and b.composed_code.strip() and b.composed_code != b.original_code:
                             corrected_code = b.composed_code
                             break
-                    # Second priority: accepted patch from files_dict
-                    if not corrected_code:
-                        if file_path in self.files_dict and self.files_dict[file_path] != self.original_files_backup.get(file_path):
-                            corrected_code = self.files_dict[file_path]
-                        else:
-                            for b in bugs:
-                                if getattr(b, "patched_code", None) and b.patched_code and b.patched_code.strip():
-                                    corrected_code = b.patched_code
-                                    break
+
+                    # Priority 2: Modified files_dict from session
+                    if not corrected_code and file_path in self.files_dict and self.files_dict[file_path] != self.original_files_backup.get(file_path):
+                        corrected_code = self.files_dict[file_path]
+
+                    # Priority 3: Successively apply each bug's patched_code or replacement
+                    if not corrected_code and working_code:
+                        cur_text = working_code
+                        for b in bugs:
+                            if getattr(b, "patched_code", None) and b.patched_code and b.patched_code != b.original_code:
+                                if len(bugs) == 1:
+                                    cur_text = b.patched_code
+                                else:
+                                    prob = getattr(b, "problematic_code", "") or ""
+                                    fix = getattr(b, "suggested_fix", "") or ""
+                                    if prob and fix and prob in cur_text:
+                                        cur_text = cur_text.replace(prob, fix, 1)
+                                    else:
+                                        cur_text = b.patched_code
+                        if cur_text != working_code:
+                            corrected_code = cur_text
 
                     if corrected_code:
-                        target_file = os.path.join(temp_export_dir, file_path)
                         os.makedirs(os.path.dirname(target_file), exist_ok=True)
                         with open(target_file, "w", encoding="utf-8") as f:
                             f.write(corrected_code)

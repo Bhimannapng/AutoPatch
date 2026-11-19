@@ -522,12 +522,13 @@ def delete_history_entry(entry_id: str):
 @app.get("/api/projects/export")
 def export_project_zip():
     try:
-        zip_path = state.create_project_zip()
+        zip_path = state.create_project_zip(apply_corrections=True)
         filename = f"{state.current_project_name or 'autopatch_project'}_corrected.zip"
         return FileResponse(
             path=zip_path,
             filename=filename,
-            media_type="application/zip"
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -538,7 +539,7 @@ def export_analysis_report_pdf():
     if not state.summary:
         raise HTTPException(status_code=400, detail="No active project analysis to export.")
     try:
-        from report_generator import generate_pdf_report, generate_html_report
+        from report_generator import generate_pdf_report
         pdf_path = generate_pdf_report(state.summary)
         clean_name = re.sub(r'[^A-Za-z0-9_-]', '_', state.current_project_name or "Project")
         
@@ -552,10 +553,35 @@ def export_analysis_report_pdf():
         return FileResponse(
             path=pdf_path,
             filename=filename,
-            media_type=media_type
+            media_type=media_type,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate report: {str(e)}")
+
+@app.get("/api/projects/export-report-html")
+def export_analysis_report_html():
+    """Generates and downloads a complete HTML analysis report."""
+    if not state.summary:
+        raise HTTPException(status_code=400, detail="No active project analysis to export.")
+    try:
+        from report_generator import generate_html_report
+        html_content = generate_html_report(state.summary)
+        clean_name = re.sub(r'[^A-Za-z0-9_-]', '_', state.current_project_name or "Project")
+        filename = f"AutoPatch_Report_{clean_name}.html"
+        
+        temp_html = tempfile.NamedTemporaryFile(suffix=".html", delete=False)
+        temp_html.write(html_content.encode("utf-8"))
+        temp_html.close()
+
+        return FileResponse(
+            path=temp_html.name,
+            filename=filename,
+            media_type="text/html",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate HTML report: {str(e)}")
 
 # =========================================================================
 # FRONTEND STATIC ASSETS SERVING
