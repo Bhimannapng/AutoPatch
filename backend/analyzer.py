@@ -130,17 +130,33 @@ def run_analysis(
     mode = engine_mode.upper().strip()
 
     if mode == "LLM":
+        executor = None
         try:
-            bugs, model_used = run_llm_analysis(files_dict, api_key)
+            import concurrent.futures
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(run_llm_analysis, files_dict, api_key)
+            bugs, model_used = future.result(timeout=10.0)
+            executor.shutdown(wait=False, cancel_futures=True)
             if bugs:
                 return bugs, model_used
         except Exception:
-            pass
-        return run_pure_ast_analysis(files_dict)
+            if executor:
+                executor.shutdown(wait=False, cancel_futures=True)
+        # Instant fallback to pure AST analysis guarantees sub-second response
+        bugs, _ = run_pure_ast_analysis(files_dict)
+        return bugs, "Deterministic AST Engine (Fast Fallback)"
     elif mode == "COMBINED":
+        executor = None
         try:
-            return run_combined_analysis(files_dict, api_key)
+            import concurrent.futures
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(run_combined_analysis, files_dict, api_key)
+            res = future.result(timeout=10.0)
+            executor.shutdown(wait=False, cancel_futures=True)
+            return res
         except Exception:
+            if executor:
+                executor.shutdown(wait=False, cancel_futures=True)
             return run_pure_ast_analysis(files_dict)
     elif mode == "SANDBOX":
         bugs, _ = run_pure_ast_analysis(files_dict)

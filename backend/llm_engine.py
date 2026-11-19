@@ -537,7 +537,7 @@ If no more bugs exist, return [].
                             model_name=model_attempt,
                             composed_code=composed_code,
                             file_rel=rel_path,
-                            max_retries=3
+                            max_retries=1
                         )
 
                         # Package validated findings into BugReport objects

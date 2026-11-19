@@ -163,8 +163,11 @@ def _execute_full_project_analysis_pipeline(project_name: str, archive_size: int
         dependencies=report.dependencies
     )
 
-    # Step 3: Sandboxed Patch Validation
+    # Step 3: Sandboxed Patch Validation (skip if already validated by engine)
     for bug in bugs:
+        if bug.validation and bug.validation.verified:
+            continue
+
         if bug.file_path.endswith(".py"):
             try:
                 val = validate_patch_in_sandbox(
