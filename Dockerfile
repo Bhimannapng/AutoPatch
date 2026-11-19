@@ -18,7 +18,7 @@ COPY backend/ ./backend/
 COPY sample_projects/ ./sample_projects/
 
 ENV PYTHONPATH=/app/backend
-ENV PORT=8000
-EXPOSE 8000
+ENV PORT=8080
+EXPOSE 8080
 
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
