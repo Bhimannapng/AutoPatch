@@ -23,12 +23,22 @@ def generate_html_report(summary: ProjectAnalysisSummary) -> str:
     # Build Bugs HTML
     bugs_html = ""
     if not summary.bugs:
-        bugs_html = """
-        <div class="clean-box">
-            <h4 style="color: #15803d; margin: 0 0 4px 0;">✔ Zero Code Defects Detected</h4>
-            <p style="margin: 0; font-size: 12px; color: #166534;">All functions, syntax trees, logic boundaries, and type assignments passed without finding bugs.</p>
-        </div>
-        """
+        # Check if scan completed unnaturally fast due to server cold-start / timeout
+        is_suspect_timeout = (total_files > 1 and total_loc > 30 and analysis_time < 0.05)
+        if is_suspect_timeout:
+            bugs_html = """
+            <div class="clean-box" style="background: #fffbeb; border: 1.5px solid #f59e0b;">
+                <h4 style="color: #b45309; margin: 0 0 4px 0;">⚠️ Scan Notice: Engine Warm-up / Re-scan Recommended</h4>
+                <p style="margin: 0; font-size: 12px; color: #92400e;">The scan finished in sub-second time without registering issues. If the server was waking up from idle, click <strong>Scan & Fix</strong> again for complete multi-file deep analysis.</p>
+            </div>
+            """
+        else:
+            bugs_html = """
+            <div class="clean-box">
+                <h4 style="color: #15803d; margin: 0 0 4px 0;">✔ Zero Code Defects Detected</h4>
+                <p style="margin: 0; font-size: 12px; color: #166534;">All functions, syntax trees, logic boundaries, and type assignments passed without finding bugs.</p>
+            </div>
+            """
     else:
         for idx, bug in enumerate(summary.bugs, 1):
             sev_class = "badge-crit" if bug.severity.lower() in ("critical", "high", "error") else "badge-warn"

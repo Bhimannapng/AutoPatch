@@ -135,13 +135,13 @@ def run_analysis(
         import concurrent.futures
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         future = executor.submit(run_llm_analysis, files_dict, api_key)
-        bugs, model_used = future.result(timeout=45.0)
+        bugs, model_used = future.result(timeout=75.0)
         executor.shutdown(wait=False, cancel_futures=True)
         return bugs, model_used
     except Exception as e:
         if executor:
             executor.shutdown(wait=False, cancel_futures=True)
-        err_msg = str(e) if str(e) else "Timeout after 45s"
+        err_msg = str(e) if str(e) else "Timeout after 75s"
         return [], f"Google Gemini LLM: Model Temporarily Unavailable ({err_msg})"
 
 def run_complete_project_analysis(

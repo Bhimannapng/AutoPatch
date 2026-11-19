@@ -259,6 +259,13 @@ class AppState:
                         with open(target_file, "w", encoding="utf-8") as f:
                             f.write(corrected_code)
 
+                # Reconcile cross-file contracts & function call signatures across all patched files
+                try:
+                    from contract_reconciler import reconcile_project_contracts
+                    reconcile_project_contracts(temp_export_dir)
+                except Exception:
+                    pass
+
             # 3. Create ZIP archive from temp_export_dir
             temp_zip = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
             zip_path = temp_zip.name

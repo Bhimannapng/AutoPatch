@@ -297,6 +297,14 @@ Filename: {rel_path} (Lines {start_line}-{end_line})
 Source Code:
 {chunk_text}
 
+CRITICAL RULES FOR SAFE REPAIRS:
+1. PRESERVE FUNCTION SIGNATURES & RETURN TYPES:
+   - Do NOT convert a function that returns a collection (list, dict, string, set) into a generator or iterator with 'yield'. External callers in other project files rely on len(), indexing, or iteration. To optimize RAM, use bounded lists, batching, or str.join(), but preserve the return type.
+2. PRESERVE EXTERNAL FUNCTION CALLS & ARGUMENT COUNTS:
+   - When repairing caller sites, do NOT pass new or extra arguments to external functions unless that function's definition in the project accepts them. Keep caller arguments strictly aligned with function definitions.
+3. PRESERVE TYPE IMPORTS:
+   - If using typing constructs (Dict, Any, List, Optional, Tuple), ensure they are imported from typing.
+
 Respond ONLY with valid JSON conforming to this schema:
 {{
   "bugs": [
