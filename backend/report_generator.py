@@ -119,21 +119,28 @@ def generate_html_report(summary: ProjectAnalysisSummary) -> str:
         """
     else:
         for idx, opt in enumerate(summary.optimizations, 1):
+            line_no = getattr(opt, 'line_start', None) or getattr(opt, 'line_number', 1)
+            risk = getattr(opt, 'risk_level', 'Medium') or 'Medium'
+            prob = getattr(opt, 'problem', '') or ''
+            why = getattr(opt, 'why_inefficient', '') or ''
+            imp = getattr(opt, 'suggested_improvement', None) or getattr(opt, 'actionable_improvement', '') or ''
+            benefit = getattr(opt, 'expected_benefit', None) or getattr(opt, 'expected_outcome', '') or ''
+
             opts_html += f"""
             <div class="finding-card">
                 <div class="finding-header">
                     <div>
                         <span class="finding-index">#{idx}</span>
-                        <span class="badge-warn">{html.escape(opt.risk_level.upper())}</span>
+                        <span class="badge-warn">{html.escape(risk.upper())}</span>
                         <strong class="finding-title">{html.escape(opt.title)}</strong>
                     </div>
-                    <span style="font-size: 11px; color: #64748b;"><code>{html.escape(opt.file_path)}:{opt.line_number}</code></span>
+                    <span style="font-size: 11px; color: #64748b;"><code>{html.escape(opt.file_path)}:{line_no}</code></span>
                 </div>
                 <div class="finding-body" style="margin-top: 8px;">
-                    <p><strong>Problem &amp; Bottleneck:</strong> {html.escape(opt.problem)}</p>
-                    <p><strong>Why Inefficient:</strong> {html.escape(opt.why_inefficient)}</p>
-                    <p><strong>Actionable Improvement:</strong> {html.escape(opt.actionable_improvement)}</p>
-                    <p style="color: #047857;"><strong>Expected Outcome:</strong> {html.escape(opt.expected_outcome)}</p>
+                    <p><strong>Problem &amp; Bottleneck:</strong> {html.escape(prob)}</p>
+                    <p><strong>Why Inefficient:</strong> {html.escape(why)}</p>
+                    <p><strong>Actionable Improvement:</strong> {html.escape(imp)}</p>
+                    <p style="color: #047857;"><strong>Expected Outcome:</strong> {html.escape(benefit)}</p>
                 </div>
             </div>
             """
@@ -149,6 +156,8 @@ def generate_html_report(summary: ProjectAnalysisSummary) -> str:
         """
     else:
         for idx, sec in enumerate(summary.security_findings, 1):
+            line_no = getattr(sec, 'line_start', None) or getattr(sec, 'line_number', 1)
+            cat_name = getattr(sec, 'vulnerability_type', None) or getattr(sec, 'category', 'Security') or 'Security'
             sec_class = "badge-crit" if sec.severity.lower() in ("critical", "high") else "badge-warn"
             sec_html += f"""
             <div class="finding-card">
@@ -156,10 +165,10 @@ def generate_html_report(summary: ProjectAnalysisSummary) -> str:
                     <div>
                         <span class="finding-index">#{idx}</span>
                         <span class="{sec_class}">{html.escape(sec.severity.upper())}</span>
-                        <span class="badge-cat">{html.escape(sec.category.upper())}</span>
+                        <span class="badge-cat">{html.escape(cat_name.upper())}</span>
                         <strong class="finding-title">{html.escape(sec.title)}</strong>
                     </div>
-                    <span style="font-size: 11px; color: #64748b;"><code>{html.escape(sec.file_path)}:{sec.line_number}</code></span>
+                    <span style="font-size: 11px; color: #64748b;"><code>{html.escape(sec.file_path)}:{line_no}</code></span>
                 </div>
                 <div class="finding-body" style="margin-top: 8px;">
                     <p><strong>Vulnerability Description:</strong> {html.escape(sec.description)}</p>
