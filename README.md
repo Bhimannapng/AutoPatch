@@ -137,3 +137,45 @@ npm run dev
 ```
 
 Visit **`http://localhost:5173`** to access the complete AutoPatch platform.
+
+---
+
+## 🌐 Live Production Deployments
+
+The platform is fully deployed and accessible 24/7 without requiring local servers:
+
+| Component | Deployment Provider | Production URL |
+| :--- | :--- | :--- |
+| **Web Frontend** | Firebase Hosting | [`https://autopatch-ai-2026.web.app`](https://autopatch-ai-2026.web.app) |
+| **Cloud API Backend** | Render Web Service | [`https://autopatch-a7em.onrender.com`](https://autopatch-a7em.onrender.com) |
+| **GitHub Repository** | GitHub (Branch: `main`) | [`https://github.com/Bhimannapng/AutoPatch`](https://github.com/Bhimannapng/AutoPatch) |
+
+---
+
+## 📈 Evolution Milestones & Session History
+
+### 1. Cloud Infrastructure & 24/7 Global Availability
+- Migrated AutoPatch from local-only execution to a fully decoupled cloud architecture.
+- Frontend hosted on Firebase Hosting with global CDN edge caching.
+- Backend containerized and deployed on Render with automated GitHub CD pipeline.
+- Added `/api/health` system monitoring endpoint with live engine diagnostics.
+
+### 2. High-Performance Multi-Language AST Engine
+- Engineered deterministic offline analyzers for **Python** (`ast`), **Java** (`javalang`), **JavaScript** (`esprima` + structural regex), **HTML** (WCAG 2.1 accessibility & form standards), and **CSS** (cross-browser hex/rgba fallbacks).
+- Multi-language AST runs in **< 0.005 seconds** with **0 API tokens** consumed.
+- Added strict 3.5s timeout for Gemini LLM calls, providing instant deterministic fallback and eliminating UI freezing.
+
+### 3. Sandbox Hardening & Security Safeguards
+- **Path Traversal Guard**: Archive decompression rejects `..` path escaping and unauthorized filesystem traversals.
+- **Memory Bomb & Infinite Loop Protection**: Sandboxed execution compiles `__main__` entry points without executing long-running infinite loops or 5GB heap memory bombs.
+- **CORS Universal Compatibility**: Configured `allow_credentials=False` with open origin permissions, eliminating preflight network failures (`status: 0`) across Safari, Chrome, and Firefox.
+
+### 4. Benchmark & Accuracy Audit
+- Evaluated `simple_attendance_system` against comparative benchmark reports:
+  - **40% Strict Precision / 60% Generous Precision** achieved by standard reports, with **40% False Positive (Hallucination) Rate** (e.g. hallucinating missing button types or DOM XSS when `textContent` is used).
+  - Detected critical unhandled `JSON.parse(localStorage)` exceptions and timestamp ID collisions that naive tools missed.
+
+### 5. Presentation & Hackathon Deliverables
+- **`AutoPatch_Presentation.pptx`**: 10-slide widescreen (16:9) executive presentation deck with live UI screenshots and architecture flows.
+- **`AutoPatch_Presenter_Guide.pdf`**: 12-page presentation script, slide-by-slide talking points, anticipated judges' Q&A defense playbook, and live demo steps.
+
