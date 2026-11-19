@@ -130,9 +130,18 @@ def run_analysis(
     mode = engine_mode.upper().strip()
 
     if mode == "LLM":
-        return run_llm_analysis(files_dict, api_key)
+        try:
+            bugs, model_used = run_llm_analysis(files_dict, api_key)
+            if bugs:
+                return bugs, model_used
+        except Exception:
+            pass
+        return run_pure_ast_analysis(files_dict)
     elif mode == "COMBINED":
-        return run_combined_analysis(files_dict, api_key)
+        try:
+            return run_combined_analysis(files_dict, api_key)
+        except Exception:
+            return run_pure_ast_analysis(files_dict)
     elif mode == "SANDBOX":
         bugs, _ = run_pure_ast_analysis(files_dict)
         return bugs, "Sandboxed Execution & Test Validation Engine"

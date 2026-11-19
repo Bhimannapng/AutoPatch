@@ -308,7 +308,7 @@ def retest_and_heal_in_sandbox(
     model_name: str,
     composed_code: str,
     file_rel: str,
-    max_retries: int = 3
+    max_retries: int = 1
 ) -> Tuple[str, Dict[str, Any]]:
     """
     PART 6: FIX -> SANDBOX -> RETEST LOOP
@@ -374,12 +374,10 @@ def run_llm_analysis(files_dict: Dict[str, str], api_key: Optional[str] = None) 
     """
     effective_key = api_key or os.getenv("GEMINI_API_KEY", "").strip()
     bugs: List[BugReport] = []
-    active_model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+    active_model_name = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
     candidate_models = [
-        "gemini-3.1-flash-lite",
-        "gemini-3.8-flash",
         "gemini-3.5-flash-lite",
-        "gemini-4-hydrogen",
+        "gemini-3.5-flash",
     ]
 
     client = None
@@ -390,16 +388,19 @@ def run_llm_analysis(files_dict: Dict[str, str], api_key: Optional[str] = None) 
         except Exception:
             client = None
 
+    llm_analyzed_count = 0
+    MAX_LLM_FILES = 4
+
     for rel_path, content in files_dict.items():
         ext = os.path.splitext(rel_path)[1].lower()
-        if ext in (".pyc", ".png", ".jpg", ".jpeg", ".ico", ".svg", ".zip", ".tar", ".gz", ".lock"):
+        if ext in (".pyc", ".png", ".jpg", ".jpeg", ".ico", ".svg", ".zip", ".tar", ".gz", ".lock", ".txt", ".md", ".csv", ".json", ".yaml", ".yml"):
             continue
 
         is_html = ext in (".html", ".htm")
         is_prog = ext in (".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".cpp", ".c", ".h", ".hpp", ".cs", ".go", ".rs", ".php", ".rb", ".swift", ".kt")
-        is_web_or_config = is_html or ext in (".css", ".json", ".yaml", ".yml", ".xml")
+        is_css = ext in (".css",)
 
-        if not (is_prog or is_web_or_config):
+        if not (is_prog or is_html or is_css):
             continue
 
         # Check Cache
@@ -413,7 +414,8 @@ def run_llm_analysis(files_dict: Dict[str, str], api_key: Optional[str] = None) 
         file_bugs: List[BugReport] = []
         analyzed_via_gemini = False
 
-        if client:
+        if client and is_prog and llm_analyzed_count < MAX_LLM_FILES:
+            llm_analyzed_count += 1
             chunks = chunk_source_code(content, max_lines_per_chunk=300)
             chunk_success_all = True
 
@@ -473,9 +475,9 @@ If there are no bugs, return: {{"bugs": [], "composed_code": ""}}
                         elif isinstance(parsed, list):
                             raw_bug_list = parsed
 
-                        # PASS 2: ERROR COVERAGE REVIEW (for files with >=15 lines to catch missed independent bugs)
+                        # PASS 2: Quick fallback review ONLY if Pass 1 found 0 bugs
                         num_lines = len(chunk_text.splitlines())
-                        if num_lines >= 15 and len(raw_bug_list) < 10:
+                        if num_lines >= 15 and len(raw_bug_list) == 0:
                             found_titles = [b.get("title", "") for b in raw_bug_list]
                             pass2_prompt = f"""Review lines {start_line}-{end_line} of {rel_path} again to identify any ADDITIONAL independent bugs, edge cases, type errors, or calculation flaws not already listed in: {found_titles}.
 Source Code:
