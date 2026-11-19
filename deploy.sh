@@ -25,7 +25,11 @@ if [ -n "$(git status --porcelain)" ]; then
     git commit -m "Auto-deploy update: $(date '+%Y-%m-%d %H:%M:%S')"
 fi
 
+echo "🚀 Pushing latest code to GitHub (Bhimannapng/AutoPatch)..."
+git push origin main
+
 echo "=========================================="
 echo "🎉 DEPLOYMENT SUCCESSFUL!"
 echo "Live Web App: https://autopatch-ai-2026.web.app"
+echo "GitHub Repo:  https://github.com/Bhimannapng/AutoPatch"
 echo "=========================================="
