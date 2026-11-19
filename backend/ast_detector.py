@@ -185,6 +185,12 @@ class PythonScopeVisitor(ast.NodeVisitor):
                         self.current_scope.add_def(elt.id, getattr(node, "lineno", 1))
         self.visit(node.value)
 
+    def visit_AnnAssign(self, node: ast.AnnAssign):
+        if isinstance(node.target, ast.Name):
+            self.current_scope.add_def(node.target.id, getattr(node, "lineno", 1))
+        if node.value:
+            self.visit(node.value)
+
     def visit_AugAssign(self, node: ast.AugAssign):
         if isinstance(node.target, ast.Name):
             self.current_scope.add_read(node.target.id, getattr(node, "lineno", 1), getattr(node, "col_offset", 0))
@@ -194,6 +200,32 @@ class PythonScopeVisitor(ast.NodeVisitor):
     def visit_For(self, node: ast.For):
         if isinstance(node.target, ast.Name):
             self.current_scope.add_def(node.target.id, getattr(node, "lineno", 1))
+
+        # Check off-by-one: range(len(...) + 1)
+        if isinstance(node.iter, ast.Call) and getattr(node.iter.func, 'id', '') == 'range':
+            if node.iter.args and len(node.iter.args) == 1:
+                arg = node.iter.args[0]
+                if isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Add):
+                    if isinstance(arg.left, ast.Call) and getattr(arg.left.func, 'id', '') == 'len':
+                        if isinstance(arg.right, ast.Constant) and arg.right.value == 1:
+                            lineno = getattr(node, 'lineno', 1)
+                            self.findings.append({
+                                "id": f"bug-offbyone-{uuid.uuid4().hex[:8]}",
+                                "title": f"Off-by-One Loop Boundary Error (Line {lineno})",
+                                "category": "Logical Errors",
+                                "severity": "ERROR",
+                                "confidence": 98,
+                                "line_start": lineno,
+                                "line_end": lineno,
+                                "col_offset": getattr(node, 'col_offset', 0),
+                                "end_col_offset": getattr(node, 'col_offset', 0) + 15,
+                                "description": f"Loop range 'range(len(...) + 1)' on line {lineno} iterates past sequence boundary, triggering IndexError upon indexing the final element.",
+                                "root_cause": f"At line {lineno}, upper bound reaches len(sequence) which is out of range for 0-indexed sequences.",
+                                "trigger_input_or_state": "Execution reaches final iteration (index == len(sequence)).",
+                                "repair_summary": "Change `range(len(...) + 1)` to `range(len(...))` or iterate directly over items.",
+                                "node": node
+                            })
+
         self.visit(node.iter)
         for stmt in node.body:
             self.visit(stmt)

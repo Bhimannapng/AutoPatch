@@ -117,56 +117,36 @@ def run_combined_analysis(files_dict: Dict[str, str], api_key: Optional[str] = N
 
 def run_analysis(
     files_dict: Dict[str, str],
-    engine_mode: str = "AST",
+    engine_mode: str = "LLM",
     api_key: Optional[str] = None
 ) -> Tuple[List[BugReport], str]:
     """
-    Unified analyzer routing between 4 engine modes:
-    - 'AST': Pure AST Engine (Python `ast`, Java `javalang`, JS `esprima`, HTML markup)
-    - 'LLM': Google Gemini GenAI SDK Multi-Language Engine
-    - 'COMBINED': Two-Stage Combined Pipeline (AST + Gemini LLM)
-    - 'SANDBOX': Sandboxed Execution & Test Validation Mode
+    Project-Level Intelligence Engine (100% LLM Driven):
+    Directly routes to Google Gemini LLM Engine for deep semantic reasoning,
+    root-cause investigation, and surgical patch generation without AST involvement.
+    AST engine is preserved strictly for offline unit tests.
     """
     mode = engine_mode.upper().strip()
-
-    if mode == "LLM":
-        executor = None
-        try:
-            import concurrent.futures
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            future = executor.submit(run_llm_analysis, files_dict, api_key)
-            bugs, model_used = future.result(timeout=3.5)
-            executor.shutdown(wait=False, cancel_futures=True)
-            if bugs:
-                return bugs, model_used
-        except Exception:
-            if executor:
-                executor.shutdown(wait=False, cancel_futures=True)
-        # Instant fallback to pure AST analysis guarantees sub-second response
-        bugs, _ = run_pure_ast_analysis(files_dict)
-        return bugs, "Deterministic AST Engine (Fast Fallback)"
-    elif mode == "COMBINED":
-        executor = None
-        try:
-            import concurrent.futures
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            future = executor.submit(run_combined_analysis, files_dict, api_key)
-            res = future.result(timeout=3.5)
-            executor.shutdown(wait=False, cancel_futures=True)
-            return res
-        except Exception:
-            if executor:
-                executor.shutdown(wait=False, cancel_futures=True)
-            return run_pure_ast_analysis(files_dict)
-    elif mode == "SANDBOX":
-        bugs, _ = run_pure_ast_analysis(files_dict)
-        return bugs, "Sandboxed Execution & Test Validation Engine"
-    else:
+    if mode == "AST":
         return run_pure_ast_analysis(files_dict)
+
+    executor = None
+    try:
+        import concurrent.futures
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(run_llm_analysis, files_dict, api_key)
+        bugs, model_used = future.result(timeout=45.0)
+        executor.shutdown(wait=False, cancel_futures=True)
+        return bugs, model_used
+    except Exception as e:
+        if executor:
+            executor.shutdown(wait=False, cancel_futures=True)
+        err_msg = str(e) if str(e) else "Timeout after 45s"
+        return [], f"Google Gemini LLM: Model Temporarily Unavailable ({err_msg})"
 
 def run_complete_project_analysis(
     files_dict: Dict[str, str],
-    engine_mode: str = "AST",
+    engine_mode: str = "LLM",
     api_key: Optional[str] = None,
     dependencies: Optional[List[Any]] = None
 ) -> Tuple[List[BugReport], List[OptimizationFinding], List[SecurityFinding], List[ArchitectureFinding], str]:

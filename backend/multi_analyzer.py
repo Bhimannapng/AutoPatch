@@ -116,10 +116,37 @@ def analyze_performance_and_ram(files_dict: Dict[str, str]) -> List[Optimization
             try:
                 tree = ast.parse(content)
                 for node in ast.walk(tree):
-                    # Inefficient Nested Loops
+                    # Inefficient Nested Loops / Memory Accumulation
                     if isinstance(node, (ast.For, ast.While)):
+                        # Check nested loop with heap accumulation
                         for child in node.body:
                             if isinstance(child, (ast.For, ast.While)):
+                                # Check if inner loop appends to a list
+                                has_append = False
+                                for stmt in child.body:
+                                    if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+                                        if getattr(stmt.value.func, 'attr', '') in ('append', 'extend'):
+                                            has_append = True
+                                            break
+                                if has_append:
+                                    lineno = getattr(node, 'lineno', 1)
+                                    optimizations.append(OptimizationFinding(
+                                        id=f"ram-loop-{uuid.uuid4().hex[:8]}",
+                                        title=f"High RAM Consumption: Memory Accumulation in Nested Loop",
+                                        file_path=rel_path,
+                                        line_start=lineno,
+                                        line_end=getattr(child, 'lineno', lineno),
+                                        category="RAM Optimisation",
+                                        severity="Critical",
+                                        problem="Repeatedly appending payloads inside nested loops holds massive memory in heap, risking gigabyte-level RAM exhaustion (OOM).",
+                                        why_inefficient="Accumulating large data structures inside nested iterations prevents garbage collection and scales heap usage rapidly.",
+                                        suggested_improvement="Refactor using a generator/yield stream, write to disk, or process in small streaming batches.",
+                                        expected_benefit="Drastically reduces peak memory from gigabytes to constant O(1) buffer size.",
+                                        is_measured=False,
+                                        risk_level="High"
+                                    ))
+                                    break
+
                                 for grandchild in child.body:
                                     if isinstance(grandchild, (ast.For, ast.While)):
                                         optimizations.append(OptimizationFinding(

@@ -102,10 +102,8 @@ def robust_json_loads(text: str) -> Optional[Any]:
     return None
 
 
+
 from ast_detector import inspect_html_file
-
-    return findings
-
 
 def patch_html_file(content: str, findings: List[Dict[str, Any]]) -> str:
     """Applies composed HTML repairs."""
@@ -254,71 +252,46 @@ Respond ONLY with a JSON object:
     return current_code, last_exec
 
 
-def run_llm_analysis(files_dict: Dict[str, str], api_key: Optional[str] = None) -> Tuple[List[BugReport], str]:
+def _analyze_single_file_gemini(
+    rel_path: str,
+    content: str,
+    client: Any,
+    candidate_models: List[str],
+    effective_key: str
+) -> Tuple[List[BugReport], Optional[str], Optional[str]]:
     """
-    Executes AutoPatch LLM-based analysis across programming files and web/markup/HTML files.
-    - Multi-Error Detection: Identifies all detectable errors (5, 10, 20+) in 50-line and large files.
-    - Token-Efficient JSON Architecture: Eliminates redundant file reproductions, preventing truncation.
-    - Multi-Pass Review: Pass 1 thorough code review, Pass 2 error coverage review, Pass 3 deduplication.
-    - Fix -> Sandbox -> Retest Loop: Executes repaired code in isolated sandbox, diagnoses failures, retests.
+    Performs pure Google Gemini LLM code analysis on a single file:
+    1. Checks cache for instant zero-latency retrieval.
+    2. Chunks file if > 300 lines (never chunks small files).
+    3. Analyzes chunks using candidate model cascade (gemini-3.1-flash-lite, gemini-3.5-flash-lite, etc.).
+    4. Validates composed patch in sandbox (< 0.1s).
+    5. Assembles verified BugReport items.
+    Returns: (bugs_list, model_name_used, error_reason)
     """
-    effective_key = api_key or os.getenv("GEMINI_API_KEY", "").strip()
-    bugs: List[BugReport] = []
-    active_model_name = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
-    candidate_models = [
-        "gemini-3.5-flash-lite",
-        "gemini-3.5-flash",
-    ]
+    ext = os.path.splitext(rel_path)[1].lower()
+    default_model = candidate_models[0] if candidate_models else "gemini-3.1-flash-lite"
 
-    client = None
-    if effective_key:
-        try:
-            from google import genai
-            client = genai.Client(api_key=effective_key)
-        except Exception:
-            client = None
+    # Check Cache
+    cache_key = get_content_hash(rel_path, content, effective_key, default_model)
+    if cache_key in LLM_CACHE:
+        cached_bugs, cached_model = LLM_CACHE[cache_key]
+        return cached_bugs, cached_model, None
 
-    llm_analyzed_count = 0
-    MAX_LLM_FILES = 4
+    chunks = chunk_source_code(content, max_lines_per_chunk=300)
+    file_bugs: List[BugReport] = []
+    used_model: Optional[str] = None
+    last_err: Optional[str] = None
 
-    for rel_path, content in files_dict.items():
-        ext = os.path.splitext(rel_path)[1].lower()
-        if ext in (".pyc", ".png", ".jpg", ".jpeg", ".ico", ".svg", ".zip", ".tar", ".gz", ".lock", ".txt", ".md", ".csv", ".json", ".yaml", ".yml"):
-            continue
+    for start_line, end_line, chunk_text in chunks:
+        chunk_analyzed = False
 
-        is_html = ext in (".html", ".htm")
-        is_prog = ext in (".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".cpp", ".c", ".h", ".hpp", ".cs", ".go", ".rs", ".php", ".rb", ".swift", ".kt")
-        is_css = ext in (".css",)
+        for model_attempt in candidate_models:
+            try:
+                from google.genai import types
 
-        if not (is_prog or is_html or is_css):
-            continue
-
-        # Check Cache
-        cache_key = get_content_hash(rel_path, content, effective_key, active_model_name)
-        if cache_key in LLM_CACHE:
-            cached_bugs, cached_model = LLM_CACHE[cache_key]
-            bugs.extend(cached_bugs)
-            active_model_name = cached_model
-            continue
-
-        file_bugs: List[BugReport] = []
-        analyzed_via_gemini = False
-
-        if client and is_prog and llm_analyzed_count < MAX_LLM_FILES:
-            llm_analyzed_count += 1
-            chunks = chunk_source_code(content, max_lines_per_chunk=300)
-            chunk_success_all = True
-
-            for start_line, end_line, chunk_text in chunks:
-                chunk_analyzed = False
-                for model_attempt in candidate_models:
-                    try:
-                        from google.genai import types
-
-                        # PASS 1: COMPLETE THOROUGH ANALYSIS
-                        pass1_prompt = f"""You are AutoPatch's automated bug detection and code repair engine for INNOVEDGE Hackathon 2026.
-Analyze this source file and identify ALL independent programming errors, syntax flaws, logic bugs, type errors, off-by-one boundaries, dead code, mutable defaults, and undefined identifiers.
-DO NOT STOP AFTER THE FIRST ERROR. Inspect every single function, class, loop, condition, calculation, and variable.
+                prompt = f"""You are AutoPatch's automated bug detection and code repair engine for INNOVEDGE Hackathon 2026.
+Analyze this source file and identify ALL independent programming errors, syntax flaws, logic bugs, type errors, off-by-one boundaries, dead code, mutable defaults, and calculation flaws.
+Inspect every single function, class, loop, condition, calculation, and variable.
 
 Filename: {rel_path} (Lines {start_line}-{end_line})
 Source Code:
@@ -346,241 +319,207 @@ Respond ONLY with valid JSON conforming to this schema:
 }}
 If there are no bugs, return: {{"bugs": [], "composed_code": ""}}
 """
-                        response = client.models.generate_content(
-                            model=model_attempt,
-                            contents=pass1_prompt,
-                            config=types.GenerateContentConfig(
-                                response_mime_type="application/json",
-                                max_output_tokens=8192
-                            )
-                        )
+                response = client.models.generate_content(
+                    model=model_attempt,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        max_output_tokens=8192
+                    )
+                )
 
-                        parsed = robust_json_loads(response.text) if (response and response.text) else None
-                        raw_bug_list: List[Dict[str, Any]] = []
-                        composed_code = content
+                parsed = robust_json_loads(response.text) if (response and response.text) else None
+                raw_bug_list: List[Dict[str, Any]] = []
+                composed_code = content
 
-                        if isinstance(parsed, dict):
-                            raw_bug_list = parsed.get("bugs", [])
-                            composed_code = parsed.get("composed_code") or content
-                        elif isinstance(parsed, list):
-                            raw_bug_list = parsed
+                if isinstance(parsed, dict):
+                    raw_bug_list = parsed.get("bugs", [])
+                    composed_code = parsed.get("composed_code") or content
+                elif isinstance(parsed, list):
+                    raw_bug_list = parsed
 
-                        # PASS 2: Quick fallback review ONLY if Pass 1 found 0 bugs
-                        num_lines = len(chunk_text.splitlines())
-                        if num_lines >= 15 and len(raw_bug_list) == 0:
-                            found_titles = [b.get("title", "") for b in raw_bug_list]
-                            pass2_prompt = f"""Review lines {start_line}-{end_line} of {rel_path} again to identify any ADDITIONAL independent bugs, edge cases, type errors, or calculation flaws not already listed in: {found_titles}.
-Source Code:
-{chunk_text}
+                # Deduplication by line and title
+                seen_keys = set()
+                deduped_bugs: List[Dict[str, Any]] = []
+                for b in raw_bug_list:
+                    lstart = int(b.get("line_start", start_line))
+                    title_norm = re.sub(r'[^a-zA-Z0-9]', '', b.get("title", "").lower()[:20])
+                    key = (lstart, title_norm)
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        deduped_bugs.append(b)
 
-Respond ONLY with a JSON array of additional bugs:
-[
-  {{
-    "title": "Clear concise bug title with line number",
-    "line_start": {start_line},
-    "line_end": {start_line},
-    "problematic_code": "exact bad line",
-    "suggested_fix": "replacement line",
-    "category": "Syntax Errors | Variable Errors | Function Errors | Logical Errors | Structural Errors | Code Quality Problems",
-    "severity": "ERROR | WARNING | INFO",
-    "confidence": 90,
-    "description": "Short explanation",
-    "root_cause": "Detailed explanation",
-    "trigger_input_or_state": "Failure condition",
-    "repair_summary": "Summary of repair"
-  }}
-]
-If no more bugs exist, return [].
-"""
-                            try:
-                                resp2 = client.models.generate_content(
-                                    model=model_attempt,
-                                    contents=pass2_prompt,
-                                    config=types.GenerateContentConfig(
-                                        response_mime_type="application/json",
-                                        max_output_tokens=4096
-                                    )
-                                )
-                                parsed2 = robust_json_loads(resp2.text) if (resp2 and resp2.text) else []
-                                if isinstance(parsed2, list):
-                                    raw_bug_list.extend(parsed2)
-                            except Exception:
-                                pass
+                deduped_bugs.sort(key=lambda x: int(x.get("line_start", 1)))
 
-                        # PASS 3: DEDUPLICATION & CONSOLIDATION
-                        seen_keys = set()
-                        deduped_bugs: List[Dict[str, Any]] = []
-                        for b in raw_bug_list:
-                            lstart = int(b.get("line_start", start_line))
-                            title_norm = re.sub(r'[^a-zA-Z0-9]', '', b.get("title", "").lower()[:20])
-                            key = (lstart, title_norm)
-                            if key not in seen_keys:
-                                seen_keys.add(key)
-                                deduped_bugs.append(b)
+                # Sandboxed validation of composed code
+                sandbox_result = execute_code_in_sandbox(composed_code, rel_path)
 
-                        # Sort by line number
-                        deduped_bugs.sort(key=lambda x: int(x.get("line_start", 1)))
+                for item in deduped_bugs:
+                    line_s = int(item.get("line_start", start_line))
+                    line_e = int(item.get("line_end", line_s))
+                    single_patched = create_single_bug_patch(content, item)
+                    diff = generate_unified_diff(content, single_patched, rel_path)
 
-                        # STEP 4 to STEP 7: SANDBOX RETEST & HEAL LOOP
-                        final_composed_code, sandbox_result = retest_and_heal_in_sandbox(
-                            client=client,
-                            model_name=model_attempt,
-                            composed_code=composed_code,
-                            file_rel=rel_path,
-                            max_retries=1
-                        )
+                    if not diff and composed_code != content:
+                        single_patched = composed_code
+                        diff = generate_unified_diff(content, composed_code, rel_path)
 
-                        # Package validated findings into BugReport objects
-                        for item in deduped_bugs:
-                            line_s = int(item.get("line_start", start_line))
-                            line_e = int(item.get("line_end", line_s))
-                            single_patched = create_single_bug_patch(content, item)
-                            diff = generate_unified_diff(content, single_patched, rel_path)
+                    sev_str = str(item.get("severity", "WARNING")).upper()
+                    if sev_str not in ("ERROR", "WARNING", "INFO"):
+                        sev_str = "WARNING"
 
-                            # If single diff is empty but composed diff exists, use composed diff
-                            if not diff and final_composed_code != content:
-                                single_patched = final_composed_code
-                                diff = generate_unified_diff(content, final_composed_code, rel_path)
+                    is_ver = sandbox_result.get("success", False)
+                    status_str = sandbox_result.get("status", "PASSED")
+                    exec_out = sandbox_result.get("stdout", "").strip()
+                    err_out = sandbox_result.get("stderr") or sandbox_result.get("error_message") or ""
 
-                            sev_str = str(item.get("severity", "WARNING")).upper()
-                            if sev_str not in ("ERROR", "WARNING", "INFO"):
-                                sev_str = "WARNING"
+                    if is_ver:
+                        val_details = f"Verified: Patch compiled and executed successfully with exit code 0 in sandbox.\nOutput: {exec_out}"
+                    else:
+                        val_details = f"Validation notice: Sandbox returned status {status_str}.\n{err_out}"
 
-                            # Build real sandboxed validation details
-                            is_ver = sandbox_result.get("success", False)
-                            status_str = sandbox_result.get("status", "PASSED")
-                            exec_out = sandbox_result.get("stdout", "").strip()
-                            err_out = sandbox_result.get("stderr") or sandbox_result.get("error_message") or ""
+                    validation_obj = SandboxedValidation(
+                        before_passed=0,
+                        before_failed=1,
+                        before_tests=[TestResult(name=f"baseline {rel_path}", status="FAILED", error_message=item.get("title"))],
+                        after_passed=1 if is_ver else 0,
+                        after_failed=0 if is_ver else 1,
+                        after_tests=[TestResult(
+                            name=f"sandbox {rel_path}",
+                            status=status_str,
+                            duration_ms=sandbox_result.get("duration_ms", 10.0),
+                            stdout=exec_out,
+                            error_message=err_out if not is_ver else None
+                        )],
+                        verified=is_ver,
+                        details=val_details
+                    )
 
-                            if is_ver:
-                                val_details = f"Verified: Patch compiled and executed successfully with exit code 0 in sandbox.\nOutput: {exec_out}"
-                            else:
-                                val_details = f"Validation notice: Sandbox returned status {status_str}.\n{err_out}"
+                    file_bugs.append(BugReport(
+                        id=f"bug-llm-{uuid.uuid4().hex[:8]}",
+                        title=item.get("title", f"Defect in {rel_path}"),
+                        file_path=rel_path,
+                        line_start=line_s,
+                        line_end=line_e,
+                        col_offset=0,
+                        end_col_offset=0,
+                        category=item.get("category", "Logical Errors"),
+                        severity=sev_str,
+                        confidence=int(item.get("confidence", 95)),
+                        description=item.get("description", ""),
+                        root_cause=item.get("root_cause", "Identified by Gemini code review."),
+                        trigger_input_or_state=item.get("trigger_input_or_state", "Execution condition."),
+                        repair_summary=item.get("repair_summary", "Targeted fix applied."),
+                        original_code=content,
+                        patched_code=single_patched,
+                        composed_code=composed_code,
+                        diff=diff,
+                        validation=validation_obj,
+                        status="Needs Review",
+                        created_at="Just now"
+                    ))
 
-                            validation_obj = SandboxedValidation(
-                                before_passed=0,
-                                before_failed=1,
-                                before_tests=[TestResult(name=f"baseline {rel_path}", status="FAILED", error_message=item.get("title"))],
-                                after_passed=1 if is_ver else 0,
-                                after_failed=0 if is_ver else 1,
-                                after_tests=[TestResult(
-                                    name=f"sandbox {rel_path}",
-                                    status=status_str,
-                                    duration_ms=sandbox_result.get("duration_ms", 10.0),
-                                    stdout=exec_out,
-                                    error_message=err_out if not is_ver else None
-                                )],
-                                verified=is_ver,
-                                details=val_details
-                            )
-
-                            file_bugs.append(BugReport(
-                                id=f"bug-llm-{uuid.uuid4().hex[:8]}",
-                                title=item.get("title", f"Defect in {rel_path}"),
-                                file_path=rel_path,
-                                line_start=line_s,
-                                line_end=line_e,
-                                col_offset=0,
-                                end_col_offset=0,
-                                category=item.get("category", "Logical Errors"),
-                                severity=sev_str,
-                                confidence=int(item.get("confidence", 92)),
-                                description=item.get("description", ""),
-                                root_cause=item.get("root_cause", "Identified by Gemini code review."),
-                                trigger_input_or_state=item.get("trigger_input_or_state", "Execution condition."),
-                                repair_summary=item.get("repair_summary", "Targeted fix applied."),
-                                original_code=content,
-                                patched_code=single_patched,
-                                composed_code=final_composed_code,
-                                diff=diff,
-                                validation=validation_obj,
-                                status="Needs Review",
-                                created_at="Just now"
-                            ))
-
-                        chunk_analyzed = True
-                        active_model_name = model_attempt
-                        break
-                    except Exception:
-                        continue
-
-                if not chunk_analyzed:
-                    chunk_success_all = False
+                chunk_analyzed = True
+                used_model = model_attempt
+                break
+            except Exception as e:
+                last_err = str(e)
+                if "API_KEY_INVALID" in last_err or "API key not valid" in last_err or "PERMISSION_DENIED" in last_err:
                     break
+                continue
 
-            if chunk_success_all:
-                analyzed_via_gemini = True
+        if not chunk_analyzed:
+            return [], None, last_err or "All candidate models failed"
 
-        # Fallback / Local Analysis if Gemini not active or offline
-        if not analyzed_via_gemini:
-            if is_html:
-                html_findings = inspect_html_file(rel_path, content)
-                if html_findings:
-                    composed_html = patch_html_file(content, html_findings)
-                    for f in html_findings:
-                        single_patched = patch_html_file(content, [f])
-                        diff = generate_unified_diff(content, single_patched, rel_path)
-                        file_bugs.append(BugReport(
-                            id=f"bug-html-{uuid.uuid4().hex[:8]}",
-                            title=f["title"],
-                            file_path=rel_path,
-                            line_start=f["line_start"],
-                            line_end=f["line_end"],
-                            category=f["category"],
-                            severity=f["severity"],
-                            confidence=f["confidence"],
-                            description=f["description"],
-                            root_cause=f["root_cause"],
-                            trigger_input_or_state=f["trigger_input_or_state"],
-                            repair_summary=f["repair_summary"],
-                            original_code=content,
-                            patched_code=single_patched,
-                            composed_code=composed_html,
-                            diff=diff,
-                            status="Needs Review",
-                            created_at="Just now"
-                        ))
-            elif is_prog:
-                from ast_detector import detect_ast_bugs
-                from ast_patcher import apply_single_ast_patch, compose_multi_ast_patches
-                raw_findings = detect_ast_bugs(rel_path, content)
-                if raw_findings:
-                    composed_code, _ = compose_multi_ast_patches(content, raw_findings, rel_path)
-                    for finding in raw_findings:
-                        patched_code, diff = apply_single_ast_patch(content, finding, rel_path)
-                        if not diff and composed_code != content:
-                            patched_code = composed_code
-                            diff = generate_unified_diff(content, composed_code, rel_path)
-                        file_bugs.append(BugReport(
-                            id=finding["id"],
-                            title=finding["title"],
-                            file_path=rel_path,
-                            line_start=finding["line_start"],
-                            line_end=finding["line_end"],
-                            col_offset=finding.get("col_offset", 0),
-                            end_col_offset=finding.get("end_col_offset", 0),
-                            category=finding["category"],
-                            severity=finding["severity"],
-                            confidence=finding["confidence"],
-                            description=finding.get("description", ""),
-                            root_cause=finding["root_cause"],
-                            trigger_input_or_state=finding["trigger_input_or_state"],
-                            repair_summary=finding.get("repair_summary", "Applied targeted fix."),
-                            original_code=content,
-                            patched_code=patched_code,
-                            composed_code=composed_code,
-                            diff=diff,
-                            status="Needs Review",
-                            created_at="Just now"
-                        ))
+    # Cache successful results
+    if used_model:
+        LLM_CACHE[cache_key] = (file_bugs, used_model)
 
-        # Save to Cache
-        LLM_CACHE[cache_key] = (file_bugs, active_model_name)
-        bugs.extend(file_bugs)
+    return file_bugs, used_model, None
 
+
+def run_llm_analysis(files_dict: Dict[str, str], api_key: Optional[str] = None) -> Tuple[List[BugReport], str]:
+    """
+    Executes AutoPatch 100% Pure Google Gemini LLM Analysis.
+    - Zero AST Involvement: Never falls back to AST for analysis.
+    - Parallel File Analysis: Concurrently analyzes multiple files via ThreadPoolExecutor.
+    - Model Fallback Cascade: gemini-3.1-flash-lite -> gemini-3.5-flash-lite -> gemini-3.8-flash -> gemini-3.5-flash.
+    - User-Facing Error Transparency: Reports model unavailability if quota or service fails.
+    """
+    import concurrent.futures
+
+    effective_key = api_key or os.getenv("GEMINI_API_KEY", "").strip()
     if not effective_key:
-        engine_label = "Gemini LLM Engine (Local Heuristic / API Key Setup Required)"
-    else:
-        engine_label = f"Google Gemini LLM Engine ({active_model_name})"
+        return [], "Google Gemini LLM: API Key Required (Configure GEMINI_API_KEY in settings)"
 
-    return bugs, engine_label
+    pref_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
+    candidate_models = [pref_model] if pref_model else []
+    for fallback_m in ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.5-flash"]:
+        if fallback_m not in candidate_models:
+            candidate_models.append(fallback_m)
+
+    try:
+        from google import genai
+        client = genai.Client(api_key=effective_key)
+    except Exception as e:
+        return [], f"Google Gemini LLM: Client Initialization Failed ({str(e)})"
+
+    # Filter source files eligible for deep LLM analysis
+    files_to_analyze: List[Tuple[str, str]] = []
+    MAX_LLM_FILES = 8
+
+    for rel_path, content in files_dict.items():
+        ext = os.path.splitext(rel_path)[1].lower()
+        if ext in (".pyc", ".png", ".jpg", ".jpeg", ".ico", ".svg", ".zip", ".tar", ".gz", ".lock", ".txt", ".md", ".csv", ".json", ".yaml", ".yml"):
+            continue
+
+        is_prog = ext in (".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".cpp", ".c", ".h", ".hpp", ".cs", ".go", ".rs", ".php", ".rb", ".swift", ".kt", ".html", ".htm", ".css")
+        if is_prog and len(files_to_analyze) < MAX_LLM_FILES:
+            files_to_analyze.append((rel_path, content))
+
+    if not files_to_analyze:
+        return [], f"Google Gemini LLM Engine ({candidate_models[0]}) - No analyzable source files found"
+
+    all_bugs: List[BugReport] = []
+    primary_model: Optional[str] = None
+    last_error: Optional[str] = None
+
+    # Parallel dispatch across files using ThreadPoolExecutor
+    max_workers = min(4, len(files_to_analyze))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_map = {
+            executor.submit(
+                _analyze_single_file_gemini,
+                rel_path,
+                content,
+                client,
+                candidate_models,
+                effective_key
+            ): rel_path
+            for rel_path, content in files_to_analyze
+        }
+
+        for future in concurrent.futures.as_completed(future_map):
+            rel_path = future_map[future]
+            try:
+                file_bugs, model_used, err_msg = future.result()
+                if file_bugs:
+                    all_bugs.extend(file_bugs)
+                if model_used:
+                    primary_model = model_used
+                if err_msg:
+                    last_error = err_msg
+            except Exception as e:
+                last_error = str(e)
+
+    all_bugs.sort(key=lambda x: (x.file_path, x.line_start, x.col_offset))
+
+    if primary_model:
+        engine_label = f"Google Gemini LLM Engine ({primary_model})"
+    elif last_error:
+        # User-facing transparent error message when model is unavailable or quota is exceeded
+        engine_label = f"Google Gemini LLM: Model Temporarily Unavailable ({last_error})"
+    else:
+        engine_label = f"Google Gemini LLM Engine ({candidate_models[0]})"
+
+    return all_bugs, engine_label
