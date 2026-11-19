@@ -1,0 +1,139 @@
+# 🛡️ AutoPatch – Autonomous AI Software Intelligence & Project Repair Platform
+> **INNOVEDGE Hackathon 2026 – Problem Statement 02**  
+> **Target Developer Account:** `bhimanna2006@gmail.com`  
+> **Architecture:** Multi-Language Project Intelligence Platform + 3 Specialized AI Agents + Autonomous Sandbox Repair
+
+---
+
+## 🚀 Overview & New Project Vision
+
+**AutoPatch** has evolved from an individual code error checker into a complete **AI-powered software engineering assistant and project intelligence platform**. 
+
+When a developer or engineering team uploads a complete software repository or code snippet, AutoPatch:
+1. **Understands the Complete Project Structure:** Maps files, directories, languages, frameworks, entry points, and module dependency graphs.
+2. **Performs Multi-Domain Analysis:** Identifies syntax/semantic bugs, investigates root causes, discovers CPU/RAM bottlenecks, audits security vulnerabilities, and evaluates modularity.
+3. **Deploys Three Specialized AI Agents:**
+   - 🐞 **Dr. Patch (Bug Intelligence Specialist):** Investigates root causes, explains failure states, and designs surgical patches.
+   - ⚡ **Nova (RAM & Performance Engineer):** Profiles memory allocations, detects $O(N^2)/O(N^3)$ loops, finds memory leaks, and eliminates dead code.
+   - 🛡️ **Aegis (Architecture & Security Auditor):** Audits OWASP vulnerabilities (SQL injection, command execution, hardcoded keys) and checks cross-module coupling.
+   - 🤖 **AutoPatch Lead Orchestrator:** Synthesizes multi-agent insights and coordinates technical strategy.
+4. **Autonomous Patch Studio & Sandbox Validation:** Generates focused unified diffs, runs isolated sandbox builds and test executions, measures execution metrics, and provides safe 1-click **Accept**, **Reject**, or **Revert** rollback.
+5. **Retains the Original Code Error Finder:** Fully preserves instant snippet analysis across pure AST, Google Gemini LLM, Combined pipeline, and Sandbox modes.
+
+---
+
+## 📦 Project Ingestion Modes
+
+AutoPatch provides four input pathways:
+
+| Ingestion Mode | Capabilities & Safeguards |
+| :--- | :--- |
+| **Option A: Upload ZIP** | Safely extracts project archives with strict path-traversal protection (`..` directory escape prevention). Unnests single root directories, identifies dependencies, and indexes the entire codebase. |
+| **Option B: GitHub Repository** | Clones public or private GitHub repositories via shallow clone (`--depth 1`), validates URLs, supports branch selection, and records commit hashes without exposing private tokens. |
+| **Option C: Project Folder** | Direct browser directory upload via `webkitdirectory`, automatically filtering vendor artifacts (`node_modules`, `.git`, `venv`) while reading complete source files. |
+| **Option D: Individual Files / Snippet** | Instant code editor for Python, Java, JavaScript, and HTML with language auto-detection, instant AST scanning, and benchmark loading. |
+
+---
+
+## 🧠 Shared Intelligence Architecture & Token Optimization
+
+AutoPatch avoids costly and repetitive full-project LLM scans by implementing a **Shared Project Intelligence Architecture**:
+1. **Deterministic Local Analysis First:** Pure AST parsing (`ast`, `javalang`, `esprima`), regex vulnerability scanning, loop complexity detection, and `tracemalloc` runtime profiling run locally on the machine with **0 API token cost** and sub-second execution.
+2. **Central Project Context:** A single unified `ProjectAnalysisSummary` stores structure, dependencies, defects, optimizations, and security findings.
+3. **Targeted Context Retrieval for Gemini:** When chatting with any specialist agent, AutoPatch retrieves only the specific relevant file snippets (max 80 lines) and related findings, avoiding quadratic token explosion.
+4. **Primary LLM Engine:** Google Gemini SDK with `gemini-3.1-flash-lite` (sub-second latency) with automatic fallback to `gemini-3.8-flash` and deterministic offline intelligence.
+
+---
+
+## 👥 The Three Specialized AI Agents
+
+AutoPatch presents three dedicated specialists grounded in the uploaded project context:
+
+### 1. 🐞 Dr. Patch – Code Intelligence & Bug Detection
+- **Role:** Software Debugging Specialist
+- **Focus:** Root-cause investigation, syntax/semantic errors, logic flaws, and targeted patches.
+- **Sample Queries:**
+  - *"Why is my application crashing?"*
+  - *"Which bug should I fix first and why?"*
+  - *"Explain the root cause of the primary defect in server.py."*
+
+### 2. ⚡ Nova – Performance & RAM Optimisation
+- **Role:** Software Performance and Memory Optimization Engineer
+- **Focus:** Heap RAM allocations, $O(N^2)/O(N^3)$ loop refactoring, unclosed file descriptors, eager list comprehensions vs generators, and redundant debug statements.
+- **Honest Metrics:** Clearly distinguishes between statically suspected bottlenecks and sandboxed runtime measurements.
+- **Sample Queries:**
+  - *"How can I reduce unnecessary memory usage in process_data?"*
+  - *"Are there any nested loops that can be optimized from $O(N^3)$ to $O(N)$?"*
+
+### 3. 🛡️ Aegis – Architecture & Security Auditor
+- **Role:** Senior Software Architect and Security Reviewer
+- **Focus:** OWASP vulnerability detection (SQL injection, shell command injection, unsafe `eval`/`exec`, hardcoded secrets, unsafe deserialization), cross-file import consistency, and frontend/backend endpoint alignment.
+- **Sample Queries:**
+  - *"Are there any security vulnerabilities or exposed credentials?"*
+  - *"Is my project architecture clean, modular, and maintainable?"*
+
+---
+
+## 🛠️ Autonomous Patch Studio & Safe Rollback
+
+1. **Focused Code Corrections:** Shows original code, suggested fix, and side-by-side / unified diff.
+2. **Deep Root-Cause Explanations:**
+   - **What is happening**
+   - **Why it occurred**
+   - **Trigger condition or input**
+   - **Suggested fix & confidence rating**
+3. **Sandboxed Testing & Verification:**
+   - Compiles and runs code in an isolated sandbox (`python`, `javac`/`java`, `node`).
+   - Reports exact test results (passed, failed, timeouts).
+   - Validates multi-fix composition to ensure patches don't conflict.
+4. **100% Safe Reversible Rollback:**
+   - **Accept Patch:** Writes patch to workspace and logs timestamped history entry.
+   - **Reject Patch:** Dismisses patch with engineer notes.
+   - **Revert Patch:** Restores the exact original source code from memory backup.
+   - **Export Fixed Project (.zip):** One-click download of the repaired workspace.
+
+---
+
+## 🧪 Comprehensive Automated Test Suite (27 Tests)
+
+All 27 automated tests pass 100% in **0.55 seconds**:
+
+```bash
+source venv/bin/activate
+PYTHONPATH=backend pytest tests/
+```
+
+### Test Coverage Highlights:
+- **Test 1:** Small Python project (file discovery, AST, root-cause analysis, patches).
+- **Test 2:** Java project analysis (`javalang` parser, methods, zero division, unreachable statements).
+- **Test 3:** Full-stack project discovery (React frontend + FastAPI backend detection).
+- **Test 4:** Performance analysis ($O(N^3)$ triple nested loops detection).
+- **Test 5:** RAM analysis (Heap memory profiling via `tracemalloc`).
+- **Test 6:** Security analysis (Hardcoded secrets, SQL injection, command execution).
+- **Test 7:** Three-agent collaboration (Shared project context, distinct perspectives).
+- **Test 8:** Large project handling (750+ to 1,000+ lines across multiple modules without limits).
+- **Test 9:** Safe patch rollback and revert in state.
+- **Tests 10–27:** AST multi-error recovery, tolerant syntax parsing, engine mode switching.
+
+---
+
+## 🚦 Running the Application
+
+### 1. Prerequisites
+- Python 3.11+
+- Node.js 18+
+
+### 2. Start Backend API Server
+```bash
+cd /Users/bhimanna/Desktop/AutoPatch
+source venv/bin/activate
+PYTHONPATH=backend uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+### 3. Start Frontend Workstation
+```bash
+cd /Users/bhimanna/Desktop/AutoPatch/frontend
+npm run dev
+```
+
+Visit **`http://localhost:5173`** to access the complete AutoPatch platform.

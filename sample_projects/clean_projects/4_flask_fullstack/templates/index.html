@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Engineering Dispatches & Insights</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="navbar">
+        <div class="container">
+            <span class="logo">TechPulse</span>
+            <span class="badge">Engineering Blog</span>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="publish-card">
+            <h2>Publish an Article</h2>
+            <form id="post-form">
+                <input type="text" id="post-title" placeholder="Article Title" required>
+                <input type="text" id="post-author" placeholder="Author Name" required>
+                <textarea id="post-content" rows="4" placeholder="Article Content..." required></textarea>
+                <button type="submit" id="submit-btn">Publish Article</button>
+            </form>
+        </section>
+
+        <section class="posts-section">
+            <h2>Published Articles</h2>
+            <div id="posts-container" class="posts-list">
+                <!-- Dynamically populated via app.js -->
+            </div>
+        </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

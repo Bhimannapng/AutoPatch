@@ -1,0 +1,32 @@
+<html>
+<head>
+    <title>Developer Portfolio & Feedback</title>
+    <link rel="stylesheet" href="static/styles.css">
+</head>
+<body>
+    <header>
+        <h1>Welcome to My Portfolio</h1>
+        <!-- Accessibility issue: missing alt attribute -->
+        <img src="static/profile.png">
+    </header>
+
+    <main>
+        <section id="feedback-section">
+            <h2>Submit Feedback</h2>
+            <form action="/api/feedback" method="POST">
+                <input type="text" name="name" placeholder="Your Name" required>
+                <input type="email" name="email" placeholder="Your Email" required>
+                <textarea name="comment" placeholder="Your Message"></textarea>
+                <button type="submit">Send Message</button>
+            </form>
+        </section>
+    </main>
+
+    <script>
+        // Fetch recent users from backend
+        fetch('/api/users')
+            .then(res => res.json())
+            .then(data => console.log("Fetched users:", data));
+    </script>
+</body>
+</html>
