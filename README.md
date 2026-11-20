@@ -171,6 +171,10 @@ The platform is fully deployed and accessible 24/7 without requiring local serve
 - **CORS Universal Compatibility**: Configured `allow_credentials=False` with open origin permissions, eliminating preflight network failures (`status: 0`) across Safari, Chrome, and Firefox.
 
 ### 4. Benchmark & Accuracy Audit
+- **Official Problem Statement 02 Benchmark Suite** ([`benchmarks/`](file:///Users/bhimanna/Desktop/AutoPatch/benchmarks)):
+  - **40 Distinct Bugs** (`AP001` to `AP040`) across **Python, Java, JavaScript, and C**.
+  - **200 Standardized Test Scenarios** ($40 \times 5$: `primary_trigger`, `normal_input`, `boundary_input`, `edge_case`, `regression_check`).
+  - Available in both `.csv` and `.json` formats for automated CI/CD and LLM evaluation harnesses.
 - Evaluated `simple_attendance_system` against comparative benchmark reports:
   - **40% Strict Precision / 60% Generous Precision** achieved by standard reports, with **40% False Positive (Hallucination) Rate** (e.g. hallucinating missing button types or DOM XSS when `textContent` is used).
   - Detected critical unhandled `JSON.parse(localStorage)` exceptions and timestamp ID collisions that naive tools missed.
